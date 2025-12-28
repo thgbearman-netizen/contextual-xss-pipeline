@@ -5,33 +5,44 @@ import { SurfaceDiscoveryTable } from "@/components/dashboard/SurfaceDiscoveryTa
 import { CallbackLog } from "@/components/dashboard/CallbackLog";
 import { InputClassification } from "@/components/dashboard/InputClassification";
 import { TerminalLog } from "@/components/dashboard/TerminalLog";
+import { useScanData } from "@/hooks/useScanData";
 
 const Index = () => {
+  const { 
+    endpoints, 
+    callbacks, 
+    logs, 
+    metrics, 
+    isLoading, 
+    isScanning, 
+    startScan 
+  } = useScanData();
+
   return (
     <div className="min-h-screen bg-background">
-      <Header />
+      <Header onStartScan={startScan} isScanning={isScanning} />
       
       <main className="container mx-auto px-6 py-8 space-y-8">
         {/* Pipeline Status */}
         <section className="animate-fade-in">
-          <PipelineOverview />
+          <PipelineOverview metrics={metrics} isScanning={isScanning} />
         </section>
 
         {/* Metrics Grid */}
         <section className="animate-fade-in" style={{ animationDelay: "100ms" }}>
-          <MetricsGrid />
+          <MetricsGrid metrics={metrics} />
         </section>
 
         {/* Main Content Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Surface Discovery - 2 columns */}
           <section className="lg:col-span-2 animate-fade-in" style={{ animationDelay: "200ms" }}>
-            <SurfaceDiscoveryTable />
+            <SurfaceDiscoveryTable endpoints={endpoints} isLoading={isLoading} />
           </section>
 
           {/* Input Classification - 1 column */}
           <section className="animate-fade-in" style={{ animationDelay: "300ms" }}>
-            <InputClassification />
+            <InputClassification classification={metrics.inputClassification} isLoading={isLoading} />
           </section>
         </div>
 
@@ -39,12 +50,12 @@ const Index = () => {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Callback Log */}
           <section className="animate-fade-in" style={{ animationDelay: "400ms" }}>
-            <CallbackLog />
+            <CallbackLog callbacks={callbacks} isLoading={isLoading} />
           </section>
 
           {/* Terminal Log */}
           <section className="animate-fade-in" style={{ animationDelay: "500ms" }}>
-            <TerminalLog />
+            <TerminalLog logs={logs} isLoading={isLoading} />
           </section>
         </div>
       </main>
@@ -59,11 +70,11 @@ const Index = () => {
               <span>Built for authorized security testing only</span>
             </div>
             <div className="flex items-center gap-4 font-mono">
-              <span>Uptime: 99.7%</span>
+              <span>Targets: {metrics.totalTargets}</span>
               <span>•</span>
-              <span>Memory: 847MB</span>
+              <span>Endpoints: {metrics.totalEndpoints}</span>
               <span>•</span>
-              <span>CPU: 23%</span>
+              <span>Findings: {metrics.confirmedFindings}</span>
             </div>
           </div>
         </div>

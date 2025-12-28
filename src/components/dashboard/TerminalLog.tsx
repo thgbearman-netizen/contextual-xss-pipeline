@@ -1,50 +1,26 @@
-import { Terminal as TerminalIcon } from "lucide-react";
-import { useEffect, useState } from "react";
+import { Terminal as TerminalIcon, Loader2 } from "lucide-react";
+import type { ScanLog } from "@/lib/api";
 
-interface LogEntry {
-  timestamp: string;
-  level: "info" | "warn" | "error" | "success";
-  message: string;
+interface TerminalLogProps {
+  logs: ScanLog[];
+  isLoading: boolean;
 }
 
-const initialLogs: LogEntry[] = [
-  { timestamp: "14:32:18", level: "success", message: "Callback received: xss_a7f3c2 → admin panel access confirmed" },
-  { timestamp: "14:32:15", level: "info", message: "Injecting context-aware probe into /api/v1/comments [body]" },
-  { timestamp: "14:32:12", level: "warn", message: "Rate limit detected on target: example.com (backing off 30s)" },
-  { timestamp: "14:32:08", level: "info", message: "Surface scan complete: 47 new endpoints discovered" },
-  { timestamp: "14:32:05", level: "info", message: "CMS fingerprint: WordPress 6.4.2 + WooCommerce 8.x" },
-  { timestamp: "14:32:01", level: "error", message: "Failed to reach OOB listener: retrying in 5s" },
-  { timestamp: "14:31:58", level: "success", message: "Token correlation: xss_b8e4d1 matched → low confidence (scanner UA)" },
-];
-
-const levelStyles = {
+const levelStyles: Record<string, string> = {
   info: "text-primary",
   warn: "text-warning",
   error: "text-destructive",
   success: "text-success",
 };
 
-export function TerminalLog() {
-  const [logs, setLogs] = useState(initialLogs);
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      const newLog: LogEntry = {
-        timestamp: new Date().toLocaleTimeString("en-US", { hour12: false }).slice(0, 8),
-        level: ["info", "info", "info", "warn", "success"][Math.floor(Math.random() * 5)] as LogEntry["level"],
-        message: [
-          "Scanning endpoint: /wp-json/wp/v2/posts",
-          "Parameter classified: content → display_content (HIGH)",
-          "OOB listener heartbeat: OK",
-          "Injection queued: log-trigger probe for /admin/logs",
-          "Context inference: HTML body detected",
-        ][Math.floor(Math.random() * 5)],
-      };
-      setLogs((prev) => [newLog, ...prev.slice(0, 9)]);
-    }, 3000);
-
-    return () => clearInterval(interval);
-  }, []);
+export function TerminalLog({ logs, isLoading }: TerminalLogProps) {
+  if (isLoading) {
+    return (
+      <div className="card-cyber rounded-lg border border-border p-12 flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   return (
     <div className="card-cyber rounded-lg border border-border overflow-hidden">
@@ -62,19 +38,29 @@ export function TerminalLog() {
 
       <div className="bg-background/80 p-4 h-64 overflow-y-auto font-mono text-xs space-y-1.5 relative">
         <div className="absolute inset-0 scanline pointer-events-none" />
-        {logs.map((log, index) => (
-          <div
-            key={`${log.timestamp}-${index}`}
-            className="flex items-start gap-3 animate-fade-in"
-            style={{ animationDelay: `${index * 30}ms` }}
-          >
-            <span className="text-muted-foreground shrink-0">[{log.timestamp}]</span>
-            <span className={`shrink-0 uppercase font-medium ${levelStyles[log.level]}`}>
-              [{log.level.padEnd(7)}]
-            </span>
-            <span className="text-foreground/90">{log.message}</span>
+        
+        {logs.length === 0 ? (
+          <div className="text-muted-foreground">
+            <span className="text-primary">▶</span> Awaiting scan commands...
           </div>
-        ))}
+        ) : (
+          logs.map((log, index) => (
+            <div
+              key={log.id}
+              className="flex items-start gap-3 animate-fade-in"
+              style={{ animationDelay: `${index * 30}ms` }}
+            >
+              <span className="text-muted-foreground shrink-0">
+                [{new Date(log.created_at).toLocaleTimeString('en-US', { hour12: false })}]
+              </span>
+              <span className={`shrink-0 uppercase font-medium ${levelStyles[log.level] || levelStyles.info}`}>
+                [{log.level.padEnd(7)}]
+              </span>
+              <span className="text-foreground/90">{log.message}</span>
+            </div>
+          ))
+        )}
+        
         <div className="flex items-center gap-1 text-primary">
           <span>▌</span>
           <span className="animate-pulse">_</span>

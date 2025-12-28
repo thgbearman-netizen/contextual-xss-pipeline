@@ -8,53 +8,58 @@ import {
   Clock,
 } from "lucide-react";
 
-export function MetricsGrid() {
+interface MetricsGridProps {
+  metrics: {
+    totalTargets: number;
+    totalEndpoints: number;
+    activeInjections: number;
+    totalCallbacks: number;
+    confirmedFindings: number;
+    highRiskInputs: number;
+  };
+}
+
+export function MetricsGrid({ metrics }: MetricsGridProps) {
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
       <MetricCard
         title="Targets Scanned"
-        value="1,247"
-        subtitle="Across 42 domains"
+        value={metrics.totalTargets.toLocaleString()}
+        subtitle="Total domains"
         icon={Globe}
-        trend="up"
-        trendValue="+12%"
         variant="primary"
       />
       <MetricCard
-        title="Inputs Classified"
-        value="8,934"
-        subtitle="High-risk: 234"
+        title="Endpoints Found"
+        value={metrics.totalEndpoints.toLocaleString()}
+        subtitle={`High-risk: ${metrics.highRiskInputs}`}
         icon={Fingerprint}
-        trend="up"
-        trendValue="+8%"
       />
       <MetricCard
         title="Active Injections"
-        value="156"
+        value={metrics.activeInjections.toLocaleString()}
         subtitle="Awaiting callback"
         icon={Zap}
         variant="warning"
       />
       <MetricCard
         title="Callbacks Received"
-        value="23"
-        subtitle="Last 24 hours"
+        value={metrics.totalCallbacks.toLocaleString()}
+        subtitle="OOB correlations"
         icon={AlertTriangle}
-        trend="up"
-        trendValue="+3"
-        variant="destructive"
+        variant={metrics.totalCallbacks > 0 ? "destructive" : "default"}
       />
       <MetricCard
         title="Confirmed Vulns"
-        value="7"
-        subtitle="Validated & reported"
+        value={metrics.confirmedFindings.toLocaleString()}
+        subtitle="Validated findings"
         icon={CheckCircle}
-        variant="success"
+        variant={metrics.confirmedFindings > 0 ? "success" : "default"}
       />
       <MetricCard
         title="Avg. Response"
-        value="3.2h"
-        subtitle="Callback delay"
+        value="--"
+        subtitle="Pending data"
         icon={Clock}
       />
     </div>

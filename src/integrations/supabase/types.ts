@@ -14,7 +14,254 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      callbacks: {
+        Row: {
+          callback_type: string
+          confidence: string
+          delay_seconds: number | null
+          id: string
+          injection_id: string
+          raw_data: Json | null
+          received_at: string
+          source_ip: string | null
+          user_agent: string | null
+        }
+        Insert: {
+          callback_type: string
+          confidence?: string
+          delay_seconds?: number | null
+          id?: string
+          injection_id: string
+          raw_data?: Json | null
+          received_at?: string
+          source_ip?: string | null
+          user_agent?: string | null
+        }
+        Update: {
+          callback_type?: string
+          confidence?: string
+          delay_seconds?: number | null
+          id?: string
+          injection_id?: string
+          raw_data?: Json | null
+          received_at?: string
+          source_ip?: string | null
+          user_agent?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "callbacks_injection_id_fkey"
+            columns: ["injection_id"]
+            isOneToOne: false
+            referencedRelation: "injections"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      endpoints: {
+        Row: {
+          auth_required: boolean | null
+          cms: string | null
+          created_at: string
+          endpoint: string
+          id: string
+          input_class: string | null
+          method: string
+          params: Json | null
+          risk_level: string
+          status: string
+          target_id: string
+        }
+        Insert: {
+          auth_required?: boolean | null
+          cms?: string | null
+          created_at?: string
+          endpoint: string
+          id?: string
+          input_class?: string | null
+          method?: string
+          params?: Json | null
+          risk_level?: string
+          status?: string
+          target_id: string
+        }
+        Update: {
+          auth_required?: boolean | null
+          cms?: string | null
+          created_at?: string
+          endpoint?: string
+          id?: string
+          input_class?: string | null
+          method?: string
+          params?: Json | null
+          risk_level?: string
+          status?: string
+          target_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "endpoints_target_id_fkey"
+            columns: ["target_id"]
+            isOneToOne: false
+            referencedRelation: "targets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      findings: {
+        Row: {
+          callback_id: string | null
+          created_at: string
+          description: string | null
+          endpoint_id: string
+          evidence: Json | null
+          id: string
+          severity: string
+          status: string
+          title: string
+        }
+        Insert: {
+          callback_id?: string | null
+          created_at?: string
+          description?: string | null
+          endpoint_id: string
+          evidence?: Json | null
+          id?: string
+          severity: string
+          status?: string
+          title: string
+        }
+        Update: {
+          callback_id?: string | null
+          created_at?: string
+          description?: string | null
+          endpoint_id?: string
+          evidence?: Json | null
+          id?: string
+          severity?: string
+          status?: string
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "findings_callback_id_fkey"
+            columns: ["callback_id"]
+            isOneToOne: false
+            referencedRelation: "callbacks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "findings_endpoint_id_fkey"
+            columns: ["endpoint_id"]
+            isOneToOne: false
+            referencedRelation: "endpoints"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      injections: {
+        Row: {
+          context_type: string | null
+          created_at: string
+          endpoint_id: string
+          id: string
+          injected_at: string | null
+          param: string
+          status: string
+          token: string
+        }
+        Insert: {
+          context_type?: string | null
+          created_at?: string
+          endpoint_id: string
+          id?: string
+          injected_at?: string | null
+          param: string
+          status?: string
+          token: string
+        }
+        Update: {
+          context_type?: string | null
+          created_at?: string
+          endpoint_id?: string
+          id?: string
+          injected_at?: string | null
+          param?: string
+          status?: string
+          token?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "injections_endpoint_id_fkey"
+            columns: ["endpoint_id"]
+            isOneToOne: false
+            referencedRelation: "endpoints"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      scan_logs: {
+        Row: {
+          created_at: string
+          id: string
+          level: string
+          message: string
+          target_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          level?: string
+          message: string
+          target_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          level?: string
+          message?: string
+          target_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scan_logs_target_id_fkey"
+            columns: ["target_id"]
+            isOneToOne: false
+            referencedRelation: "targets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      targets: {
+        Row: {
+          cms_detected: string | null
+          created_at: string
+          domain: string
+          id: string
+          status: string
+          tech_stack: Json | null
+          updated_at: string
+        }
+        Insert: {
+          cms_detected?: string | null
+          created_at?: string
+          domain: string
+          id?: string
+          status?: string
+          tech_stack?: Json | null
+          updated_at?: string
+        }
+        Update: {
+          cms_detected?: string | null
+          created_at?: string
+          domain?: string
+          id?: string
+          status?: string
+          tech_stack?: Json | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never

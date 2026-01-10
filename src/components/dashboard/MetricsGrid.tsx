@@ -5,18 +5,12 @@ import {
   Zap,
   AlertTriangle,
   CheckCircle,
-  Clock,
+  ShieldAlert,
 } from "lucide-react";
+import type { ScanMetrics } from "@/hooks/useScanData";
 
 interface MetricsGridProps {
-  metrics: {
-    totalTargets: number;
-    totalEndpoints: number;
-    activeInjections: number;
-    totalCallbacks: number;
-    confirmedFindings: number;
-    highRiskInputs: number;
-  };
+  metrics: ScanMetrics;
 }
 
 export function MetricsGrid({ metrics }: MetricsGridProps) {
@@ -25,14 +19,14 @@ export function MetricsGrid({ metrics }: MetricsGridProps) {
       <MetricCard
         title="Targets Scanned"
         value={metrics.totalTargets.toLocaleString()}
-        subtitle="Total domains"
+        subtitle="Salesforce instances"
         icon={Globe}
         variant="primary"
       />
       <MetricCard
         title="Endpoints Found"
         value={metrics.totalEndpoints.toLocaleString()}
-        subtitle={`High-risk: ${metrics.highRiskInputs}`}
+        subtitle={`Vulnerable: ${metrics.vulnerableEndpoints}`}
         icon={Fingerprint}
       />
       <MetricCard
@@ -43,24 +37,25 @@ export function MetricsGrid({ metrics }: MetricsGridProps) {
         variant="warning"
       />
       <MetricCard
-        title="Callbacks Received"
+        title="Callbacks"
         value={metrics.totalCallbacks.toLocaleString()}
-        subtitle="OOB correlations"
+        subtitle={`High conf: ${metrics.highConfidenceCallbacks}`}
         icon={AlertTriangle}
-        variant={metrics.totalCallbacks > 0 ? "destructive" : "default"}
+        variant={metrics.highConfidenceCallbacks > 0 ? "destructive" : "default"}
       />
       <MetricCard
         title="Confirmed Vulns"
         value={metrics.confirmedFindings.toLocaleString()}
-        subtitle="Validated findings"
+        subtitle={`Critical: ${metrics.criticalFindings}`}
         icon={CheckCircle}
         variant={metrics.confirmedFindings > 0 ? "success" : "default"}
       />
       <MetricCard
-        title="Avg. Response"
-        value="--"
-        subtitle="Pending data"
-        icon={Clock}
+        title="Critical/High"
+        value={(metrics.criticalFindings + metrics.highFindings).toLocaleString()}
+        subtitle="Priority findings"
+        icon={ShieldAlert}
+        variant={metrics.criticalFindings > 0 ? "destructive" : "default"}
       />
     </div>
   );

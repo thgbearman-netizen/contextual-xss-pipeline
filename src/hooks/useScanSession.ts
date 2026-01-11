@@ -14,25 +14,37 @@ function generateSessionId(): string {
 }
 
 export function useScanSession() {
-  const [currentSession, setCurrentSession] = useState<ScanSession | null>(() => {
-    // Try to restore from sessionStorage (not localStorage - we want fresh sessions per browser tab)
-    const stored = sessionStorage.getItem(SESSION_STORAGE_KEY);
-    if (stored) {
-      try {
-        return JSON.parse(stored);
-      } catch {
-        return null;
-      }
-    }
-    return null;
-  });
+  const [currentSession, setCurrentSession] = useState<ScanSession | null>(null);
+  const [isInitialized, setIsInitialized] = useState(false);
 
-  // Persist session to sessionStorage
+  // Restore from sessionStorage on mount (client-side only)
   useEffect(() => {
-    if (currentSession) {
-      sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(currentSession));
+    try {
+      const stored = sessionStorage.getItem(SESSION_STORAGE_KEY);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        setCurrentSession(parsed);
+      }
+    } catch (error) {
+      console.warn('Failed to restore session from storage:', error);
     }
-  }, [currentSession]);
+    setIsInitialized(true);
+  }, []);
+
+  // Persist session to sessionStorage when it changes
+  useEffect(() => {
+    if (!isInitialized) return;
+    
+    if (currentSession) {
+      try {
+        sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(currentSession));
+      } catch (error) {
+        console.warn('Failed to save session to storage:', error);
+      }
+    } else {
+      sessionStorage.removeItem(SESSION_STORAGE_KEY);
+    }
+  }, [currentSession, isInitialized]);
 
   const startNewSession = useCallback((domain?: string): ScanSession => {
     const newSession: ScanSession = {
@@ -45,7 +57,6 @@ export function useScanSession() {
   }, []);
 
   const clearSession = useCallback(() => {
-    sessionStorage.removeItem(SESSION_STORAGE_KEY);
     setCurrentSession(null);
   }, []);
 
@@ -60,5 +71,6 @@ export function useScanSession() {
     clearSession,
     getSessionId,
     hasActiveSession: !!currentSession,
+    isInitialized,
   };
 }

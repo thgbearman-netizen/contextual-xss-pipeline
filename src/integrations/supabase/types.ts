@@ -19,34 +19,43 @@ export type Database = {
           callback_type: string
           confidence: string
           delay_seconds: number | null
+          fp_reason: string | null
           id: string
           injection_id: string
+          is_duplicate: boolean | null
           raw_data: Json | null
           received_at: string
           source_ip: string | null
           user_agent: string | null
+          validation_hash: string | null
         }
         Insert: {
           callback_type: string
           confidence?: string
           delay_seconds?: number | null
+          fp_reason?: string | null
           id?: string
           injection_id: string
+          is_duplicate?: boolean | null
           raw_data?: Json | null
           received_at?: string
           source_ip?: string | null
           user_agent?: string | null
+          validation_hash?: string | null
         }
         Update: {
           callback_type?: string
           confidence?: string
           delay_seconds?: number | null
+          fp_reason?: string | null
           id?: string
           injection_id?: string
+          is_duplicate?: boolean | null
           raw_data?: Json | null
           received_at?: string
           source_ip?: string | null
           user_agent?: string | null
+          validation_hash?: string | null
         }
         Relationships: [
           {
@@ -164,8 +173,11 @@ export type Database = {
           context_type: string | null
           created_at: string
           endpoint_id: string
+          expected_delay_max: number | null
+          expected_delay_min: number | null
           id: string
           injected_at: string | null
+          ip_whitelist: string[] | null
           param: string
           status: string
           token: string
@@ -174,8 +186,11 @@ export type Database = {
           context_type?: string | null
           created_at?: string
           endpoint_id: string
+          expected_delay_max?: number | null
+          expected_delay_min?: number | null
           id?: string
           injected_at?: string | null
+          ip_whitelist?: string[] | null
           param: string
           status?: string
           token: string
@@ -184,8 +199,11 @@ export type Database = {
           context_type?: string | null
           created_at?: string
           endpoint_id?: string
+          expected_delay_max?: number | null
+          expected_delay_min?: number | null
           id?: string
           injected_at?: string | null
+          ip_whitelist?: string[] | null
           param?: string
           status?: string
           token?: string
@@ -206,6 +224,7 @@ export type Database = {
           id: string
           level: string
           message: string
+          session_id: string | null
           target_id: string | null
         }
         Insert: {
@@ -213,6 +232,7 @@ export type Database = {
           id?: string
           level?: string
           message: string
+          session_id?: string | null
           target_id?: string | null
         }
         Update: {
@@ -220,6 +240,7 @@ export type Database = {
           id?: string
           level?: string
           message?: string
+          session_id?: string | null
           target_id?: string | null
         }
         Relationships: [
@@ -238,6 +259,7 @@ export type Database = {
           created_at: string
           domain: string
           id: string
+          session_id: string | null
           status: string
           tech_stack: Json | null
           updated_at: string
@@ -247,6 +269,7 @@ export type Database = {
           created_at?: string
           domain: string
           id?: string
+          session_id?: string | null
           status?: string
           tech_stack?: Json | null
           updated_at?: string
@@ -256,6 +279,7 @@ export type Database = {
           created_at?: string
           domain?: string
           id?: string
+          session_id?: string | null
           status?: string
           tech_stack?: Json | null
           updated_at?: string
@@ -267,7 +291,15 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      generate_callback_hash: {
+        Args: {
+          p_callback_type: string
+          p_source_ip: string
+          p_token: string
+          p_user_agent: string
+        }
+        Returns: string
+      }
     }
     Enums: {
       [_ in never]: never

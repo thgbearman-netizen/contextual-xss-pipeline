@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useScanSession } from "./useScanSession";
 import { 
   getTargets, 
   getEndpoints, 
@@ -51,6 +52,8 @@ const defaultMetrics: ScanMetrics = {
 };
 
 export function useScanData() {
+  const { sessionId, startNewSession, hasActiveSession } = useScanSession();
+  
   const [targets, setTargets] = useState<Target[]>([]);
   const [endpoints, setEndpoints] = useState<Endpoint[]>([]);
   const [callbacks, setCallbacks] = useState<Callback[]>([]);
@@ -62,7 +65,27 @@ export function useScanData() {
   const [isScanning, setIsScanning] = useState(false);
   const [lastError, setLastError] = useState<string | null>(null);
 
-  const fetchData = useCallback(async () => {
+  // Clear all UI state for fresh session
+  const clearSessionData = useCallback(() => {
+    setTargets([]);
+    setEndpoints([]);
+    setCallbacks([]);
+    setFindings([]);
+    setInjections([]);
+    setLogs([]);
+    setMetrics(defaultMetrics);
+  }, []);
+
+  const fetchData = useCallback(async (activeSessionId?: string) => {
+    const sid = activeSessionId || sessionId;
+    
+    // If no session, show empty state
+    if (!sid) {
+      clearSessionData();
+      setIsLoading(false);
+      return;
+    }
+
     try {
       setLastError(null);
       const [
@@ -74,20 +97,30 @@ export function useScanData() {
         logsData, 
         metricsData
       ] = await Promise.all([
-        getTargets(),
-        getEndpoints(),
+        getTargets(sid),
+        getEndpoints(undefined, sid),
         getCallbacks(),
         getFindings(),
         getInjections(),
-        getScanLogs(50),
-        getMetrics()
+        getScanLogs(50, undefined, sid),
+        getMetrics(sid)
       ]);
+
+      // Filter callbacks and findings to only show ones related to this session's endpoints
+      const sessionEndpointIds = new Set(endpointsData.map(e => e.id));
+      const filteredCallbacks = callbacksData.filter(c => {
+        // Check if callback's injection belongs to a session endpoint
+        const injectionEndpointId = injectionsData.find(i => i.id === c.injection_id)?.endpoint_id;
+        return injectionEndpointId && sessionEndpointIds.has(injectionEndpointId);
+      });
+      const filteredFindings = findingsData.filter(f => sessionEndpointIds.has(f.endpoint_id));
+      const filteredInjections = injectionsData.filter(i => sessionEndpointIds.has(i.endpoint_id));
 
       setTargets(targetsData);
       setEndpoints(endpointsData);
-      setCallbacks(callbacksData);
-      setFindings(findingsData);
-      setInjections(injectionsData);
+      setCallbacks(filteredCallbacks);
+      setFindings(filteredFindings);
+      setInjections(filteredInjections);
       setLogs(logsData);
       setMetrics(metricsData);
     } catch (error) {
@@ -96,16 +129,21 @@ export function useScanData() {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [sessionId, clearSessionData]);
 
   const startScan = useCallback(async (domain: string, scanType = 'full') => {
     setIsScanning(true);
     setLastError(null);
+    
+    // Clear previous session data and start new session
+    clearSessionData();
+    const newSession = startNewSession(domain);
+    
     try {
-      const result = await scanTarget(domain, scanType);
+      const result = await scanTarget(domain, scanType, newSession.id);
       // Process pending injections after scan
       await processInjections();
-      await fetchData();
+      await fetchData(newSession.id);
       return result;
     } catch (error) {
       console.error('Scan error:', error);
@@ -114,7 +152,7 @@ export function useScanData() {
     } finally {
       setIsScanning(false);
     }
-  }, [fetchData]);
+  }, [clearSessionData, startNewSession, fetchData]);
 
   const simulateCallback = useCallback(async (token: string, callbackType = 'http') => {
     try {
@@ -149,7 +187,7 @@ export function useScanData() {
   useEffect(() => {
     fetchData();
 
-    // Subscribe to realtime updates
+    // Subscribe to realtime updates - filter by session in the handler
     const endpointsChannel = supabase
       .channel('endpoints-changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'endpoints' }, () => {
@@ -174,7 +212,11 @@ export function useScanData() {
     const logsChannel = supabase
       .channel('logs-changes')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'scan_logs' }, (payload) => {
-        setLogs(prev => [payload.new as ScanLog, ...prev.slice(0, 49)]);
+        const newLog = payload.new as ScanLog & { session_id?: string };
+        // Only add log if it belongs to current session
+        if (!sessionId || newLog.session_id === sessionId) {
+          setLogs(prev => [newLog, ...prev.slice(0, 49)]);
+        }
       })
       .subscribe();
 
@@ -184,7 +226,7 @@ export function useScanData() {
       supabase.removeChannel(findingsChannel);
       supabase.removeChannel(logsChannel);
     };
-  }, [fetchData]);
+  }, [fetchData, sessionId]);
 
   return {
     targets,
@@ -197,9 +239,12 @@ export function useScanData() {
     isLoading,
     isScanning,
     lastError,
+    sessionId,
+    hasActiveSession,
     startScan,
     simulateCallback,
     runInjections,
-    refresh: fetchData
+    refresh: fetchData,
+    clearSession: clearSessionData
   };
 }

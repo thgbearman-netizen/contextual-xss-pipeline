@@ -115,9 +115,9 @@ export const VULN_CATEGORY_LABELS: Record<string, string> = {
   community_exposure: 'Community Exposure',
 };
 
-export const scanTarget = async (domain: string, scanType = 'full') => {
+export const scanTarget = async (domain: string, scanType = 'full', sessionId?: string) => {
   const { data, error } = await supabase.functions.invoke('scan-target', {
-    body: { domain, scanType }
+    body: { domain, scanType, sessionId }
   });
   if (error) throw error;
   return data;
@@ -147,24 +147,34 @@ export const processInjections = async (batchSize = 20, vulnTypeFilter?: string)
   return data;
 };
 
-export const getTargets = async () => {
-  const { data, error } = await supabase
+export const getTargets = async (sessionId?: string) => {
+  let query = supabase
     .from('targets')
     .select('*')
     .order('created_at', { ascending: false });
+  
+  if (sessionId) {
+    query = query.eq('session_id', sessionId);
+  }
+  
+  const { data, error } = await query;
   if (error) throw error;
   return data as Target[];
 };
 
-export const getEndpoints = async (targetId?: string) => {
+export const getEndpoints = async (targetId?: string, sessionId?: string) => {
   let query = supabase
     .from('endpoints')
-    .select('*')
+    .select('*, targets!inner(session_id)')
     .order('risk_level', { ascending: false })
     .order('created_at', { ascending: false });
   
   if (targetId) {
     query = query.eq('target_id', targetId);
+  }
+  
+  if (sessionId) {
+    query = query.eq('targets.session_id', sessionId);
   }
   
   const { data, error } = await query;
@@ -236,7 +246,7 @@ export const getFindings = async (severity?: string) => {
   return data as Finding[];
 };
 
-export const getScanLogs = async (limit = 50, targetId?: string) => {
+export const getScanLogs = async (limit = 50, targetId?: string, sessionId?: string) => {
   let query = supabase
     .from('scan_logs')
     .select('*')
@@ -247,24 +257,76 @@ export const getScanLogs = async (limit = 50, targetId?: string) => {
     query = query.eq('target_id', targetId);
   }
   
+  if (sessionId) {
+    query = query.eq('session_id', sessionId);
+  }
+  
   const { data, error } = await query;
   if (error) throw error;
   return data as ScanLog[];
 };
 
-export const getMetrics = async () => {
+export const getMetrics = async (sessionId?: string) => {
+  // If sessionId provided, get target IDs for this session first
+  let targetIds: string[] = [];
+  if (sessionId) {
+    const { data: sessionTargets } = await supabase
+      .from('targets')
+      .select('id')
+      .eq('session_id', sessionId);
+    targetIds = sessionTargets?.map(t => t.id) || [];
+    
+    // If no targets in this session, return empty metrics
+    if (targetIds.length === 0) {
+      return {
+        totalTargets: 0,
+        totalEndpoints: 0,
+        activeInjections: 0,
+        totalCallbacks: 0,
+        highConfidenceCallbacks: 0,
+        confirmedFindings: 0,
+        criticalFindings: 0,
+        highFindings: 0,
+        vulnerableEndpoints: 0,
+        vulnTypeCount: {},
+        severityCount: { critical: 0, high: 0, medium: 0, low: 0 },
+        confidenceCount: { high: 0, medium: 0, low: 0 },
+        inputClassification: {}
+      };
+    }
+  }
+
+  // Build queries with optional session filtering
+  let targetsQuery = supabase.from('targets').select('id', { count: 'exact' });
+  let endpointsQuery = supabase.from('endpoints').select('id, status, input_class, risk_level', { count: 'exact' });
+  let injectionsQuery = supabase.from('injections').select('id, status, context_type', { count: 'exact' });
+  let callbacksQuery = supabase.from('callbacks').select('id, confidence, is_duplicate', { count: 'exact' });
+  let findingsQuery = supabase.from('findings').select('id, severity', { count: 'exact' });
+
+  if (sessionId && targetIds.length > 0) {
+    targetsQuery = targetsQuery.eq('session_id', sessionId);
+    endpointsQuery = endpointsQuery.in('target_id', targetIds);
+  }
+
   const [targets, endpoints, injections, callbacks, findings] = await Promise.all([
-    supabase.from('targets').select('id', { count: 'exact' }),
-    supabase.from('endpoints').select('id, status, input_class, risk_level', { count: 'exact' }),
-    supabase.from('injections').select('id, status, context_type', { count: 'exact' }),
-    supabase.from('callbacks').select('id, confidence', { count: 'exact' }),
-    supabase.from('findings').select('id, severity', { count: 'exact' })
+    targetsQuery,
+    endpointsQuery,
+    injectionsQuery,
+    callbacksQuery,
+    findingsQuery
   ]);
 
-  const endpointsData = endpoints.data || [];
-  const injectionsData = injections.data || [];
-  const callbacksData = callbacks.data || [];
-  const findingsData = findings.data || [];
+  let endpointsData = endpoints.data || [];
+  let injectionsData = injections.data || [];
+  let callbacksData = (callbacks.data || []).filter((c: any) => !c.is_duplicate); // Exclude duplicates
+  let findingsData = findings.data || [];
+
+  // Filter injections and findings by session's endpoints
+  if (sessionId && targetIds.length > 0) {
+    const endpointIds = endpointsData.map(e => e.id);
+    injectionsData = injectionsData.filter((i: any) => endpointIds.includes(i.endpoint_id));
+    findingsData = findingsData.filter((f: any) => endpointIds.includes(f.endpoint_id));
+  }
 
   // Count vulnerabilities by type
   const vulnTypeCount: Record<string, number> = {};

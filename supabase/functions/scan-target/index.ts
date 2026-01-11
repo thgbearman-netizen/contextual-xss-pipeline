@@ -94,11 +94,14 @@ serve(async (req) => {
 
     // Insert endpoints and create injections for vulnerable ones
     for (const endpoint of endpoints) {
+      // Extract only the fields that exist in the database table
+      const { description, vuln_type, testable, ...dbEndpoint } = endpoint;
+      
       const { data: insertedEndpoint, error: endpointError } = await supabase
         .from('endpoints')
         .insert({
           target_id: target.id,
-          ...endpoint
+          ...dbEndpoint
         })
         .select()
         .single();

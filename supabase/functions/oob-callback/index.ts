@@ -19,36 +19,40 @@ const SALESFORCE_POSITIVE_INDICATORS = {
     'force.com'
   ],
   ipPatterns: [
-    // Salesforce IP ranges (partial list)
-    '96.43.144.',
-    '96.43.145.',
-    '96.43.146.',
-    '136.146.',
-    '136.147.',
-    '13.110.',
-    '13.111.',
-    '185.79.140.',
-    '185.79.141.',
+    // Salesforce IP ranges (partial list for major data centers)
+    '96.43.144.', '96.43.145.', '96.43.146.',
+    '136.146.', '136.147.',
+    '13.110.', '13.111.',
+    '185.79.140.', '185.79.141.',
+    '52.88.', '54.148.', '35.161.', // AWS US-West (Salesforce uses)
+    '3.224.', '3.225.', '52.86.', // AWS US-East
   ],
   headers: [
     'x-sfdc-request-id',
     'x-sfdc-page-scope-id',
-    'salesforce-instance-url'
+    'salesforce-instance-url',
+    'x-salesforce-forwarded-to'
   ],
-  // Patterns that indicate false positives
+  // Patterns that DEFINITELY indicate false positives
   falsePositivePatterns: [
-    'googlebot',
-    'bingbot',
-    'yandexbot',
-    'baiduspider',
-    'crawler',
-    'spider',
-    'scraper',
-    'headless',
-    'phantomjs',
-    'selenium',
-    'puppeteer',
-    'playwright'
+    'googlebot', 'bingbot', 'yandexbot', 'baiduspider',
+    'crawler', 'spider', 'scraper',
+    'headless', 'phantomjs', 'selenium', 'puppeteer', 'playwright',
+    'curl/', 'wget/', 'python-requests', 'go-http-client',
+    'java/', 'apache-httpclient', 'okhttp',
+    'scanner', 'nikto', 'nessus', 'qualys', 'acunetix', 'burp',
+    'zgrab', 'masscan', 'nmap', 'shodan'
+  ],
+  // Additional false positive signals
+  suspiciousPatterns: [
+    { pattern: 'bot', weight: -3 },
+    { pattern: 'monitor', weight: -2 },
+    { pattern: 'health', weight: -2 },
+    { pattern: 'uptime', weight: -2 },
+    { pattern: 'pingdom', weight: -3 },
+    { pattern: 'newrelic', weight: -3 },
+    { pattern: 'datadog', weight: -3 },
+    { pattern: 'statuspage', weight: -2 },
   ]
 };
 
@@ -71,6 +75,21 @@ const VULN_SEVERITY_MAP: Record<string, string> = {
   'guest_user_abuse': 'critical',
   'community_exposure': 'high',
 };
+
+// Helper function to generate validation hash for deduplication
+async function generateValidationHash(
+  token: string,
+  sourceIp: string,
+  userAgent: string,
+  callbackType: string
+): Promise<string> {
+  const data = `${token}|${sourceIp}|${userAgent}|${callbackType}`;
+  const encoder = new TextEncoder();
+  const dataBuffer = encoder.encode(data);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', dataBuffer);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('').substring(0, 32);
+}
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -157,6 +176,18 @@ serve(async (req) => {
       );
     }
 
+    // Generate validation hash for duplicate detection
+    const validationHash = await generateValidationHash(token, actualSourceIp, actualUserAgent, callback_type);
+
+    // Check for duplicate callbacks (same token + source + UA + type within time window)
+    const { data: existingCallbacks } = await supabase
+      .from('callbacks')
+      .select('id')
+      .eq('validation_hash', validationHash)
+      .limit(1);
+
+    const isDuplicate = existingCallbacks && existingCallbacks.length > 0;
+
     // Create callback record
     const { data: callback, error: callbackError } = await supabase
       .from('callbacks')
@@ -166,7 +197,10 @@ serve(async (req) => {
         source_ip: actualSourceIp,
         user_agent: actualUserAgent,
         delay_seconds: delaySeconds,
-        confidence: confidenceResult.confidence,
+        confidence: isDuplicate ? 'low' : confidenceResult.confidence,
+        validation_hash: validationHash,
+        is_duplicate: isDuplicate,
+        fp_reason: isDuplicate ? 'Duplicate callback' : null,
         raw_data: { 
           token, 
           headers: requestHeaders,
@@ -179,6 +213,25 @@ serve(async (req) => {
       .single();
 
     if (callbackError) throw callbackError;
+
+    // If duplicate, skip further processing
+    if (isDuplicate) {
+      await supabase.from('scan_logs').insert({
+        target_id: injection.endpoints?.targets?.id,
+        level: 'info',
+        message: `🔄 Duplicate callback filtered: ${token}`
+      });
+
+      return new Response(
+        JSON.stringify({ 
+          success: true, 
+          callback_id: callback.id,
+          filtered: true,
+          reason: 'Duplicate callback'
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
     // Update injection status
     await supabase
@@ -275,6 +328,7 @@ function calculateSalesforceConfidence(
   const ua = userAgent.toLowerCase();
 
   // ===== FALSE POSITIVE DETECTION =====
+  // Check definite false positive patterns
   for (const fpPattern of SALESFORCE_POSITIVE_INDICATORS.falsePositivePatterns) {
     if (ua.includes(fpPattern)) {
       return {
@@ -283,8 +337,16 @@ function calculateSalesforceConfidence(
         factors: [`False positive: ${fpPattern} detected`],
         salesforceIndicators: [],
         isFalsePositive: true,
-        falsePositiveReason: `Bot/crawler detected: ${fpPattern}`
+        falsePositiveReason: `Bot/crawler/scanner detected: ${fpPattern}`
       };
+    }
+  }
+
+  // Check suspicious patterns with weighted scoring
+  for (const { pattern, weight } of SALESFORCE_POSITIVE_INDICATORS.suspiciousPatterns) {
+    if (ua.includes(pattern)) {
+      score += weight;
+      factors.push(`Suspicious pattern: ${pattern} (${weight})`);
     }
   }
 
@@ -298,6 +360,18 @@ function calculateSalesforceConfidence(
       isFalsePositive: true,
       falsePositiveReason: 'Self-triggered callback (delay < 5s for stored XSS)'
     };
+  }
+
+  // Check for callbacks that are too fast for any injection type (likely prefetch/prerender)
+  if (delaySeconds < 2 && !['ssrf', 'open_redirect'].includes(vulnType || '')) {
+    score -= 2;
+    factors.push('Very fast callback (<2s) - possible prefetch');
+  }
+
+  // Check for empty or suspicious user agents
+  if (!ua || ua === 'unknown' || ua.length < 10) {
+    score -= 2;
+    factors.push('Missing or minimal user agent');
   }
 
   // ===== DELAY SCORING (for stored vulnerabilities) =====

@@ -32,7 +32,7 @@ serve(async (req) => {
   }
 
   try {
-    const { domain, scanType = 'full' } = await req.json();
+    const { domain, scanType = 'full', sessionId } = await req.json();
 
     if (!domain) {
       return new Response(
@@ -45,17 +45,21 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
+    // Generate a new session ID if not provided
+    const activeSessionId = sessionId || crypto.randomUUID();
+
     // Detect if this is a Salesforce instance
     const salesforceInfo = detectSalesforceInstance(domain);
 
-    // Create target with Salesforce metadata
+    // Create target with Salesforce metadata and session ID
     const { data: target, error: targetError } = await supabase
       .from('targets')
       .insert({ 
         domain, 
         status: 'scanning',
         cms_detected: salesforceInfo.type,
-        tech_stack: salesforceInfo.techStack
+        tech_stack: salesforceInfo.techStack,
+        session_id: activeSessionId
       })
       .select()
       .single();
@@ -64,11 +68,19 @@ serve(async (req) => {
 
     console.log(`Starting Salesforce security scan for: ${domain}`);
 
-    // Log scan start
+    // Log scan start with session ID
     await supabase.from('scan_logs').insert({
       target_id: target.id,
+      session_id: activeSessionId,
       level: 'info',
       message: `🚀 Initiating Salesforce security assessment for ${domain}`
+    });
+
+    await supabase.from('scan_logs').insert({
+      target_id: target.id,
+      session_id: activeSessionId,
+      level: 'info',
+      message: `📋 Detected instance type: ${salesforceInfo.type} | Edition: ${salesforceInfo.edition}`
     });
 
     await supabase.from('scan_logs').insert({
@@ -99,6 +111,7 @@ serve(async (req) => {
       // Log discovery with context
       await supabase.from('scan_logs').insert({
         target_id: target.id,
+        session_id: activeSessionId,
         level: endpoint.risk_level === 'critical' ? 'error' : endpoint.risk_level === 'high' ? 'warn' : 'info',
         message: `${getRiskEmoji(endpoint.risk_level)} ${endpoint.method} ${endpoint.endpoint} | ${endpoint.input_class} | Risk: ${endpoint.risk_level.toUpperCase()}`
       });
@@ -119,6 +132,7 @@ serve(async (req) => {
 
         await supabase.from('scan_logs').insert({
           target_id: target.id,
+          session_id: activeSessionId,
           level: 'warn',
           message: `⚡ Created injection probes for ${endpoint.endpoint} targeting: ${endpoint.params.slice(0, 3).join(', ')}`
         });
@@ -140,6 +154,7 @@ serve(async (req) => {
 
     await supabase.from('scan_logs').insert({
       target_id: target.id,
+      session_id: activeSessionId,
       level: criticalCount > 0 ? 'error' : highCount > 0 ? 'warn' : 'success',
       message: `✅ Scan complete: ${endpoints.length} endpoints | ${criticalCount} critical | ${highCount} high risk`
     });
@@ -148,6 +163,7 @@ serve(async (req) => {
       JSON.stringify({ 
         success: true, 
         target_id: target.id, 
+        session_id: activeSessionId,
         endpoints: endpoints.length,
         critical: criticalCount,
         high: highCount,
